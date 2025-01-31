@@ -1,0 +1,66 @@
+public class EnhancedSmsLwcController{
+    
+    public static String getCurrentPageRecordId(String testClassUrl){
+        String currentUrl = testClassUrl == null? URL.getCurrentRequestUrl().toExternalForm(): testClassUrl;
+        String recordId = currentUrl.substring(currentUrl.indexOf('a0C'), currentUrl.indexOf('a0C') + 15);
+        return recordId;
+    }
+    
+    public static String getMessagingSessionReocrdId(String intakeRecordIdTestClass){
+        String intakeRecordId = intakeRecordIdTestClass == null ? EnhancedSmsLwcController.getCurrentPageRecordId(''):intakeRecordIdTestClass;
+        String messagingSessionRecordId = [SELECT Id FROM MessagingSession WHERE Intake__c =: intakeRecordId LIMIT 1].Id;
+        return messagingSessionRecordId;
+    }
+    
+    public static String getConversationEntryId(){
+        String messsagingSessionRecordId = EnhancedSmsLwcController.getMessagingSessionReocrdId('');
+        String conversationEntryIdString = [SELECT Conversation.ConversationIdentifier FROM MessagingSession WHERE Id =: messsagingSessionRecordId].Conversation.ConversationIdentifier;
+        return conversationEntryIdString;
+    }
+    
+    @AuraEnabled(cacheable = true)
+    public static List<ConversationEntry> getConversationEntriesJson(String conversationEntryTest){
+        String conversationEntryIdString = conversationEntryTest == null? EnhancedSmsLwcController.getConversationEntryId() : conversationEntryTest;
+        Http http = new Http();
+        HttpRequest request = new HttpRequest();
+        String orgDomain = Url.getOrgDomainURL().toExternalForm();
+        request.setEndpoint(orgDomain + '/services/data/v58.0/connect/conversation/' + conversationEntryIdString  + '/entries');
+        request.setMethod('GET');
+        request.setHeader( 'Content-Type', 'application/json; charset=UTF-8' );
+        request.setHeader( 'Accept', 'application/json' );
+        String sessionId = 'Bearer ' + UserInfo.getSessionId();
+        request.setHeader( 'Authorization', sessionId );
+        HttpResponse response = http.send(request);
+        List<ConversationEntry> conversationEntries = new List<ConversationEntry>();
+        if(response.getStatusCode() == 200) {
+            // Deserialize the JSON string into collections of primitive data types.
+            Map<String, Object> parsedJson = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+            List<Object> entries = (List<Object>) parsedJson.get('conversationEntries');
+            for (Object entry : entries) {
+                conversationEntries.add((ConversationEntry) JSON.deserialize(JSON.serialize(entry), ConversationEntry.class));
+            }
+            return conversationEntries;
+        }
+        else{
+            return conversationEntries;
+        }
+    }
+   
+    public class ConversationEntry {
+        @AuraEnabled public Integer clientDuration;
+        @AuraEnabled public long clientTimestamp;
+        @AuraEnabled public String identifier;
+        @AuraEnabled public String messageText;
+        @AuraEnabled public List<String> relatedRecords;
+        @AuraEnabled public Sender sender;
+        @AuraEnabled public Long serverReceivedTimestamp;
+ 
+    }
+    
+    public class Sender {
+        @AuraEnabled public String appType;
+        @AuraEnabled public String role;
+        @AuraEnabled public String subject;
+    }
+
+}
